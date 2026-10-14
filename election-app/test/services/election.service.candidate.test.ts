@@ -7,9 +7,13 @@ jest.mock('../../src/repositories/user.repository', () => ({ findById: jest.fn()
 jest.mock('../../src/repositories/party.repository', () => ({ findById: jest.fn() }));
 jest.mock('../../src/repositories/constituency.repository', () => ({ findById: jest.fn() }));
 jest.mock('../../src/repositories/candidate.repository', () => ({
+  findById: jest.fn(),
   findByUserId: jest.fn(),
+  findByConstituency: jest.fn(),
   isCandidateNumberUsed: jest.fn(),
   create: jest.fn(),
+  update: jest.fn(),
+  remove: jest.fn(),
 }));
 jest.mock('../../src/services/upload.service', () => ({}));
 
@@ -201,5 +205,137 @@ describe('ElectionService.addCandidate', () => {
         expect(candidateRepo.create).not.toHaveBeenCalled();
       },
     );
+  });
+});
+
+describe('ElectionService.updateCandidate', () => {
+  const service = new ElectionService();
+
+  /** Stub: candidate 10 is number 1 of party 3 in constituency 5; every other lookup succeeds. */
+  function givenCandidate10() {
+    const existing = {
+      ...aCandidate({ id: 10, candidateNumber: 1, partyId: 3, constituencyId: 5 }),
+      party: aParty({ id: 3 }),
+      constituency: aConstituency({ id: 5 }),
+    };
+    jest.mocked(candidateRepo.findById).mockResolvedValue(existing);
+    jest.mocked(candidateRepo.findByConstituency).mockResolvedValue([]);
+    jest.mocked(candidateRepo.isCandidateNumberUsed).mockResolvedValue(false);
+    jest.mocked(partyRepo.findById).mockResolvedValue(aParty({ id: 7 }));
+    jest.mocked(candidateRepo.update).mockImplementation(async (id, data) => ({
+      ...existing,
+      ...aCandidate({ ...existing, ...data, id }),
+      user: aUser({ id: existing.userId }),
+    }));
+    return existing;
+  }
+
+  it('updates the policy of an existing candidate', async () => {
+    givenCandidate10();
+
+    const updated = await service.updateCandidate(10, { policy: 'นโยบายใหม่' });
+
+    expect(candidateRepo.update).toHaveBeenCalledWith(10, { policy: 'นโยบายใหม่' });
+    expect(updated.policy).toBe('นโยบายใหม่');
+  });
+
+  it('does not check the number again when it stays the same', async () => {
+    givenCandidate10();
+
+    await service.updateCandidate(10, { candidateNumber: 1 });
+
+    expect(candidateRepo.isCandidateNumberUsed).not.toHaveBeenCalled();
+  });
+
+  it('rejects a candidate that does not exist, without updating', async () => {
+    givenCandidate10();
+    jest.mocked(candidateRepo.findById).mockResolvedValue(null);
+
+    await expect(service.updateCandidate(99, { policy: 'x' })).rejects.toThrow('ไม่พบผู้สมัคร ID: 99');
+
+    expect(candidateRepo.update).not.toHaveBeenCalled();
+  });
+
+  it('rejects a number already used by another candidate in the constituency', async () => {
+    givenCandidate10();
+    jest.mocked(candidateRepo.isCandidateNumberUsed).mockResolvedValue(true);
+
+    await expect(service.updateCandidate(10, { candidateNumber: 2 })).rejects.toThrow(
+      'หมายเลขผู้สมัคร 2 ถูกใช้ในเขตนี้แล้ว',
+    );
+
+    expect(candidateRepo.isCandidateNumberUsed).toHaveBeenCalledWith(5, 2, 10);
+    expect(candidateRepo.update).not.toHaveBeenCalled();
+  });
+
+  it('rejects a party that does not exist', async () => {
+    givenCandidate10();
+    jest.mocked(partyRepo.findById).mockResolvedValue(null);
+
+    await expect(service.updateCandidate(10, { partyId: 99 })).rejects.toThrow('ไม่พบพรรค ID: 99');
+
+    expect(candidateRepo.update).not.toHaveBeenCalled();
+  });
+
+  // KNOWN BUGS in the original code, found by these tests. it.failing passes while
+  // the bug is still there and turns red once it is fixed.
+
+  // title/firstName/lastName/imageUrl live on User, not Candidate, but they are passed
+  // to candidateRepo.update. Prisma then rejects the call with
+  // "Unknown argument `firstName`" (checked against the generated client).
+  it.failing('sends only Candidate columns to candidateRepo.update', async () => {
+    givenCandidate10();
+    const update = jest.spyOn(candidateRepo, 'update');
+
+    await service.updateCandidate(10, { firstName: 'สมศรี', policy: 'นโยบายใหม่' });
+
+    const sentColumns = Object.keys(update.mock.calls[0][1]);
+    expect(sentColumns.every((column) => ['candidateNumber', 'policy', 'partyId'].includes(column))).toBe(true);
+  });
+
+  // Moving a candidate to a party that already runs in this constituency is not checked;
+  // the DB constraint @@unique([constituencyId, partyId]) fails with a raw Prisma error instead.
+  it.failing('rejects a party that already has a candidate in the constituency', async () => {
+    givenCandidate10();
+    jest.mocked(candidateRepo.findByConstituency).mockResolvedValue([
+      { ...aCandidate({ id: 11, partyId: 7, constituencyId: 5 }), user: aUser(), party: aParty({ id: 7 }), votes: [] },
+    ]);
+
+    await expect(service.updateCandidate(10, { partyId: 7 })).rejects.toThrow();
+
+    expect(candidateRepo.update).not.toHaveBeenCalled();
+  });
+
+  // Same boundary bug addCandidate had: a negative or fractional number is accepted.
+  it.failing.each([-1, 1.5])('rejects candidateNumber %p', async (candidateNumber) => {
+    givenCandidate10();
+
+    await expect(service.updateCandidate(10, { candidateNumber })).rejects.toThrow();
+
+    expect(candidateRepo.update).not.toHaveBeenCalled();
+  });
+});
+
+describe('ElectionService.deleteCandidate', () => {
+  const service = new ElectionService();
+
+  it('removes an existing candidate', async () => {
+    jest.mocked(candidateRepo.findById).mockResolvedValue({
+      ...aCandidate({ id: 10 }),
+      party: aParty(),
+      constituency: aConstituency(),
+    });
+
+    await service.deleteCandidate(10);
+
+    expect(candidateRepo.remove).toHaveBeenCalledWith(10);
+  });
+
+  it('rejects a candidate that does not exist, without removing anything', async () => {
+    jest.mocked(candidateRepo.findById).mockResolvedValue(null);
+
+    await expect(service.deleteCandidate(99)).rejects.toThrow('ไม่พบผู้สมัคร ID: 99');
+
+    expect(candidateRepo.remove).not.toHaveBeenCalled();
   });
 });
