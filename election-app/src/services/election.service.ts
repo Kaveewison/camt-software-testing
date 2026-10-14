@@ -54,6 +54,11 @@ export class ElectionService {
       );
     }
 
+    // หมายเลขบนบัตรเลือกตั้งต้องเป็นจำนวนเต็มบวก (กัน -1, 1.5)
+    if (!Number.isInteger(data.candidateNumber) || data.candidateNumber < 1) {
+      throw new Error("หมายเลขผู้สมัครต้องเป็นจำนวนเต็มบวก");
+    }
+
     const user = await userRepo.findById(data.userId);
     if (!user) {
       throw new Error(`ไม่พบผู้ใช้ ID: ${data.userId}`);

@@ -130,14 +130,14 @@ describe('ElectionService.addCandidate', () => {
       expect(candidateRepo.create).not.toHaveBeenCalled();
     });
 
-    // KNOWN BUG in the original code: only `!candidateNumber` is checked,
-    // so a negative or a fractional number is saved as a ballot number.
-    // it.failing documents the bug and passes while it is still there;
-    // it turns red as soon as the bug is fixed, so it must then become a normal it.
-    it.failing.each([-1, 1.5])('rejects %p', async (candidateNumber) => {
+    // Was a bug in the original code (only `!candidateNumber` was checked),
+    // found by this test and fixed in addCandidate.
+    it.each([-1, 1.5])('rejects %p', async (candidateNumber) => {
       givenEverythingIsAvailable();
 
-      await expect(service.addCandidate({ ...request, candidateNumber })).rejects.toThrow();
+      await expect(service.addCandidate({ ...request, candidateNumber })).rejects.toThrow(
+        'หมายเลขผู้สมัครต้องเป็นจำนวนเต็มบวก',
+      );
 
       expect(candidateRepo.create).not.toHaveBeenCalled();
     });
