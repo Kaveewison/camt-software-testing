@@ -113,6 +113,36 @@ describe('ElectionService.addCandidate', () => {
     });
   });
 
+  describe('boundary values of candidateNumber (spec: a positive integer)', () => {
+    it.each([1, 2, 99])('accepts %p', async (candidateNumber) => {
+      givenEverythingIsAvailable();
+
+      await service.addCandidate({ ...request, candidateNumber });
+
+      expect(candidateRepo.create).toHaveBeenCalledTimes(1);
+    });
+
+    it('rejects 0', async () => {
+      givenEverythingIsAvailable();
+
+      await expect(service.addCandidate({ ...request, candidateNumber: 0 })).rejects.toThrow();
+
+      expect(candidateRepo.create).not.toHaveBeenCalled();
+    });
+
+    // KNOWN BUG in the original code: only `!candidateNumber` is checked,
+    // so a negative or a fractional number is saved as a ballot number.
+    // it.failing documents the bug and passes while it is still there;
+    // it turns red as soon as the bug is fixed, so it must then become a normal it.
+    it.failing.each([-1, 1.5])('rejects %p', async (candidateNumber) => {
+      givenEverythingIsAvailable();
+
+      await expect(service.addCandidate({ ...request, candidateNumber })).rejects.toThrow();
+
+      expect(candidateRepo.create).not.toHaveBeenCalled();
+    });
+  });
+
   describe('2.3.2 Failure + 2.3.5 Mock: rejects and never creates the candidate', () => {
     it('when the user lives in another constituency', async () => {
       givenEverythingIsAvailable();
