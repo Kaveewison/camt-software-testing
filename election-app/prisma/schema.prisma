@@ -1,0 +1,110 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider  = "postgresql"
+}
+
+// Enums ensure data consistency for user roles
+enum Role {
+  VOTER
+  EC
+  ADMIN
+}
+
+// --------------------------------------
+// 1. Geography & Zones
+// --------------------------------------
+model Constituency {
+  id             Int         @id @default(autoincrement())
+  province       String
+  districtNumber Int         // e.g. District 1, District 2
+  isClosed       Boolean     @default(false) // False = Open for voting, True = Count votes
+
+  // Relations
+  users          User[]
+  candidates     Candidate[]
+
+  // Constraint: Cannot have duplicate District 1 in Bangkok twice
+  @@unique([province, districtNumber])
+}
+
+// --------------------------------------
+// 2. Political Entities
+// --------------------------------------
+model Party {
+  id         Int         @id @default(autoincrement())
+  name       String      @unique
+  logoUrl    String?
+  policy     String?     @db.Text // Use Text for long content
+
+  // Relations
+  candidates Candidate[]
+}
+
+// --------------------------------------
+// 3. People (Users & Candidates)
+// --------------------------------------
+model User {
+  id             Int          @id @default(autoincrement())
+  nationalId     String       @unique // 13-digit ID must be unique
+  laserCode      String?      // Laser code from ID card for authentication
+  title          String?      // Mr., Ms., Dr.
+  firstName      String
+  lastName       String
+  address        String?      @db.Text
+  imageUrl       String?      // Profile image URL
+  role           Role         @default(VOTER)
+  
+  // Foreign Keys
+  constituencyId Int
+  constituency   Constituency @relation(fields: [constituencyId], references: [id])
+
+  // Relations
+  vote             Vote?        // One user can have at most one active vote
+  candidateProfile Candidate?   // One user can be at most one candidate
+}
+
+model Candidate {
+  id              Int          @id @default(autoincrement())
+  candidateNumber Int          // Number on the ballot paper (e.g. No. 1, No. 2)
+  policy          String?      @db.Text
+  
+  // Foreign Keys - Candidate inherits personal info from User
+  userId          Int          @unique // One user can only be one candidate
+  user            User         @relation(fields: [userId], references: [id])
+  
+  partyId         Int
+  party           Party        @relation(fields: [partyId], references: [id])
+  
+  constituencyId  Int
+  constituency    Constituency @relation(fields: [constituencyId], references: [id])
+
+  // Relations
+  votes           Vote[]
+
+  // Constraint: Candidate Number must be unique within that specific constituency
+  @@unique([constituencyId, candidateNumber])
+
+  @@unique([constituencyId, partyId])
+}
+
+// --------------------------------------
+// 4. Transactions (Voting)
+// --------------------------------------
+model Vote {
+  id          Int       @id @default(autoincrement())
+  timestamp   DateTime  @default(now())
+
+  // Foreign Keys
+  userId      Int       @unique // Constraint: One User can only have ONE vote record
+  candidateId Int
+
+  // Relations
+  user        User      @relation(fields: [userId], references: [id])
+  candidate   Candidate @relation(fields: [candidateId], references: [id])
+}
