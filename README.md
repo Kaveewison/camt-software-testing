@@ -1,6 +1,6 @@
 # Software Testing Assignment (15%) — Workshop Review + Unit Test
 
-ผู้ทำ: **Kaveewison** · ชื่อ–นามสกุล: ______________ · รหัสนักศึกษา: ______________
+ผู้ทำ: **กวีวิศลย์ กฤษดาวิวัฒน์** · รหัสนักศึกษา **682132001** · GitHub: [Kaveewison](https://github.com/Kaveewison)
 
 repo นี้ fork มาจาก [boyone/camt-software-testing](https://github.com/boyone/camt-software-testing) (workshop *Software Testing in Real Industry*, 3–4 ต.ค. 2026)
 งานแต่ละส่วนแยกอยู่คนละ branch — README นี้บอกว่าอะไรอยู่ที่ไหนและรันอย่างไร
