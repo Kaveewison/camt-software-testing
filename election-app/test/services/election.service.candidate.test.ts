@@ -3,7 +3,7 @@
 // ElectionService imports its repositories as modules (no dependency injection),
 // so the only seam is jest.mock() on the whole module. The factories also keep
 // Prisma and the Supabase/S3 client from being loaded at all.
-jest.mock('../../src/repositories/user.repository', () => ({ findById: jest.fn() }));
+jest.mock('../../src/repositories/user.repository', () => ({ findById: jest.fn(), update: jest.fn() }));
 jest.mock('../../src/repositories/party.repository', () => ({ findById: jest.fn() }));
 jest.mock('../../src/repositories/constituency.repository', () => ({ findById: jest.fn() }));
 jest.mock('../../src/repositories/candidate.repository', () => ({
@@ -277,40 +277,49 @@ describe('ElectionService.updateCandidate', () => {
     expect(candidateRepo.update).not.toHaveBeenCalled();
   });
 
-  // KNOWN BUGS in the original code, found by these tests. it.failing passes while
-  // the bug is still there and turns red once it is fixed.
+  // Bugs in the original code, found as it.failing tests and then fixed:
 
-  // title/firstName/lastName/imageUrl live on User, not Candidate, but they are passed
-  // to candidateRepo.update. Prisma then rejects the call with
-  // "Unknown argument `firstName`" (checked against the generated client).
-  it.failing('sends only Candidate columns to candidateRepo.update', async () => {
-    givenCandidate10();
-    const update = jest.spyOn(candidateRepo, 'update');
+  // title/firstName/lastName/imageUrl live on User, not Candidate. The original code passed them
+  // to candidateRepo.update and Prisma rejected the call with "Unknown argument `firstName`".
+  it('sends only Candidate columns to candidateRepo.update and the name to userRepo.update', async () => {
+    const existing = givenCandidate10();
+    const updateCandidateRow = jest.spyOn(candidateRepo, 'update');
+    const updateUserRow = jest.spyOn(userRepo, 'update');
 
     await service.updateCandidate(10, { firstName: 'สมศรี', policy: 'นโยบายใหม่' });
 
-    const sentColumns = Object.keys(update.mock.calls[0][1]);
-    expect(sentColumns.every((column) => ['candidateNumber', 'policy', 'partyId'].includes(column))).toBe(true);
+    expect(updateCandidateRow).toHaveBeenCalledWith(10, { policy: 'นโยบายใหม่' });
+    expect(updateUserRow).toHaveBeenCalledWith(existing.userId, { firstName: 'สมศรี' });
   });
 
-  // Moving a candidate to a party that already runs in this constituency is not checked;
-  // the DB constraint @@unique([constituencyId, partyId]) fails with a raw Prisma error instead.
-  it.failing('rejects a party that already has a candidate in the constituency', async () => {
+  it('does not touch the user when no name field is given', async () => {
+    givenCandidate10();
+
+    await service.updateCandidate(10, { policy: 'นโยบายใหม่', firstName: undefined });
+
+    expect(userRepo.update).not.toHaveBeenCalled();
+  });
+
+  // Moving a candidate to a party that already runs in this constituency used to reach
+  // the DB constraint @@unique([constituencyId, partyId]) and fail with a raw Prisma error.
+  it('rejects a party that already has a candidate in the constituency', async () => {
     givenCandidate10();
     jest.mocked(candidateRepo.findByConstituency).mockResolvedValue([
       { ...aCandidate({ id: 11, partyId: 7, constituencyId: 5 }), user: aUser(), party: aParty({ id: 7 }), votes: [] },
     ]);
 
-    await expect(service.updateCandidate(10, { partyId: 7 })).rejects.toThrow();
+    await expect(service.updateCandidate(10, { partyId: 7 })).rejects.toThrow('พรรค ID: 7 มีผู้สมัครในเขตนี้แล้ว');
 
     expect(candidateRepo.update).not.toHaveBeenCalled();
   });
 
-  // Same boundary bug addCandidate had: a negative or fractional number is accepted.
-  it.failing.each([-1, 1.5])('rejects candidateNumber %p', async (candidateNumber) => {
+  // Same boundary bug addCandidate had: a negative or fractional number was accepted.
+  it.each([-1, 0, 1.5])('rejects candidateNumber %p', async (candidateNumber) => {
     givenCandidate10();
 
-    await expect(service.updateCandidate(10, { candidateNumber })).rejects.toThrow();
+    await expect(service.updateCandidate(10, { candidateNumber })).rejects.toThrow(
+      'หมายเลขผู้สมัครต้องเป็นจำนวนเต็มบวก',
+    );
 
     expect(candidateRepo.update).not.toHaveBeenCalled();
   });

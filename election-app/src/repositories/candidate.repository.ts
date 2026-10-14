@@ -98,12 +98,9 @@ export const findByUserId = async (userId: number) => {
 
 export const update = async (
   id: number,
+  // เฉพาะ column ของ Candidate — ชื่อ/คำนำหน้า/รูป อยู่ใน User (ใช้ userRepo.update)
   data: {
     candidateNumber?: number;
-    title?: string;
-    firstName?: string;
-    lastName?: string;
-    imageUrl?: string;
     policy?: string;
     partyId?: number;
   },

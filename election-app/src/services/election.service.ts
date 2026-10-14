@@ -5,6 +5,12 @@ import * as partyRepo from '../repositories/party.repository';
 import * as candidateRepo from '../repositories/candidate.repository';
 import { uploadToSupabase, deleteFromSupabase } from "./upload.service";
 
+/** ตัด key ที่เป็น undefined ออก (controller ส่งทุก field มาแม้ผู้ใช้ไม่ได้กรอก) */
+const withoutUndefined = <T extends object>(obj: T): Partial<T> =>
+  Object.fromEntries(
+    Object.entries(obj).filter(([, value]) => value !== undefined),
+  ) as Partial<T>;
+
 export class ElectionService {
   /**
    * สร้างพรรคการเมืองใหม่ (EC only)
@@ -620,6 +626,14 @@ export class ElectionService {
       throw new Error(`ไม่พบผู้สมัคร ID: ${candidateId}`);
     }
 
+    // หมายเลขบนบัตรเลือกตั้งต้องเป็นจำนวนเต็มบวก (กัน -1, 1.5 เหมือน addCandidate)
+    if (
+      data.candidateNumber !== undefined &&
+      (!Number.isInteger(data.candidateNumber) || data.candidateNumber < 1)
+    ) {
+      throw new Error("หมายเลขผู้สมัครต้องเป็นจำนวนเต็มบวก");
+    }
+
     // ตรวจสอบว่าหมายเลขผู้สมัครไม่ซ้ำในเขต
     if (data.candidateNumber && data.candidateNumber !== candidate.candidateNumber) {
       const isUsed = await candidateRepo.isCandidateNumberUsed(
@@ -641,9 +655,31 @@ export class ElectionService {
       if (!party) {
         throw new Error(`ไม่พบพรรค ID: ${data.partyId}`);
       }
+
+      // แต่ละพรรคส่งผู้สมัครได้เขตละ 1 คน (ตรงกับ @@unique([constituencyId, partyId]))
+      if (data.partyId !== candidate.partyId) {
+        const candidatesInConstituency = await candidateRepo.findByConstituency(
+          candidate.constituencyId,
+        );
+        const partyTaken = candidatesInConstituency.some(
+          (other) => other.partyId === data.partyId && other.id !== candidateId,
+        );
+        if (partyTaken) {
+          throw new Error(`พรรค ID: ${data.partyId} มีผู้สมัครในเขตนี้แล้ว`);
+        }
+      }
     }
 
-    return await candidateRepo.update(candidateId, data);
+    // ชื่อ คำนำหน้า และรูป เก็บอยู่ในตาราง User ไม่ใช่ Candidate จึงต้องแยกอัปเดต
+    const { title, firstName, lastName, imageUrl, candidateNumber, policy, partyId } = data;
+    const userFields = withoutUndefined({ title, firstName, lastName, imageUrl });
+    const candidateFields = withoutUndefined({ candidateNumber, policy, partyId });
+
+    if (Object.keys(userFields).length > 0) {
+      await userRepo.update(candidate.userId, userFields);
+    }
+
+    return await candidateRepo.update(candidateId, candidateFields);
   };
 
   public deleteCandidate = async (candidateId: number) => {
