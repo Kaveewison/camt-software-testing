@@ -8,7 +8,7 @@
 - **เครื่องมือทดสอบ:** Jest 30 · ts-jest · @faker-js/faker 9
 - **ขอบเขต:** `ElectionService` — `addCandidate`, `updateCandidate`, `deleteCandidate`
   ([src/services/election.service.ts](src/services/election.service.ts))
-- **branch:** `test/candidate`
+- **branch:** `election/original` (โค้ดเดิม) · `test/candidate` (เทสต์ + โค้ดที่ปรับปรุง)
 
 ---
 
@@ -100,9 +100,16 @@ Tests:       31 passed, 31 total
 
 ## 4. Verification & Validation — เปรียบเทียบโค้ดเดิมกับโค้ดที่ปรับปรุง (ข้อ 2.2)
 
-- **โค้ดเดิม:** commit `2fc3d87` (คัดลอกจาก repo กลุ่มโดยไม่แก้)
-- **โค้ดที่ปรับปรุง:** branch `test/candidate` ล่าสุด
-- ดูความต่างทั้งหมด: `git diff 2fc3d87 -- election-app/src`
+| branch | เนื้อหา |
+|---|---|
+| `election/original` | **โค้ดเดิม** ที่ส่งวิชา Backend คัดลอกจาก repo กลุ่มโดยไม่แก้ (commit `2fc3d87`) |
+| `test/candidate` | **โค้ดที่ปรับปรุง** หลังเขียนเทสต์ — ต่อจาก `election/original` ทีละ commit |
+
+ดูความต่างของโค้ดทั้งหมด:
+
+```bash
+git diff origin/election/original origin/test/candidate -- election-app/src
+```
 
 > **Verification** — สร้างระบบ *ถูกต้องตาม spec* ไหม (เทสต์พิสูจน์ว่าโค้ดทำตามกฎที่กำหนด)
 > **Validation** — สร้าง *ระบบที่ผู้ใช้ต้องการจริง* ไหม (กรรมการ กกต. ใช้งานหน้าจัดการผู้สมัครได้จริง)
@@ -131,10 +138,10 @@ Tests:       31 passed, 31 total
 - **ทุก error เป็น `Error` ธรรมดา** controller ตอบ `400` ทุกกรณี ทั้งที่ "ไม่พบ" ควรเป็น `404` และ "ซ้ำ" ควรเป็น `409`
 - **เพิ่ม/แก้/ลบผู้สมัครได้แม้เขตปิดหีบแล้ว** (`isClosed`) — ต้องถามผู้ใช้ (กกต.) ก่อนว่าควรห้ามหรือไม่ (Validation)
 
-### ประวัติการทำงาน (ดูด้วย `git log --oneline main..test/candidate`)
+### ประวัติการทำงาน (ดูด้วย `git log --oneline origin/election/original^..origin/test/candidate`)
 
 ```
-2fc3d87  นำโค้ด backend เดิมมาไว้ใน election-app/
+2fc3d87  นำโค้ด backend เดิมมาไว้ใน election-app/   ← election/original
 000b267  ติดตั้ง Jest + ts-jest + faker
 79e5b08  builder ด้วย faker และเทสต์แรก (happy path + stub)
 3b354ae  เทสต์กรณีล้มเหลว (failure + mock)
@@ -143,4 +150,5 @@ Tests:       31 passed, 31 total
 b1a50ab  แก้ bug addCandidate → it.failing เปลี่ยนเป็น it
 04f20bd  เทสต์ updateCandidate / deleteCandidate เจอ bug เพิ่ม 3 ตัว
 a0319c4  แก้ bug 3 ตัวของ updateCandidate
+770228d  README วิธีรันเทสต์ ตารางข้อ 2.3 ทฤษฎี และเปรียบเทียบ V&V
 ```
