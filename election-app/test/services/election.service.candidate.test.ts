@@ -13,6 +13,7 @@ jest.mock('../../src/repositories/candidate.repository', () => ({
 }));
 jest.mock('../../src/services/upload.service', () => ({}));
 
+import { faker, fakerTH } from '@faker-js/faker';
 import * as candidateRepo from '../../src/repositories/candidate.repository';
 import * as constituencyRepo from '../../src/repositories/constituency.repository';
 import * as partyRepo from '../../src/repositories/party.repository';
@@ -48,6 +49,68 @@ describe('ElectionService.addCandidate', () => {
 
     // Assert
     expect(result).toBe(created);
+  });
+
+  describe('2.3.4 Spy: what addCandidate sends to candidateRepo.create', () => {
+    it('connects the user, party and constituency by id', async () => {
+      givenEverythingIsAvailable();
+      // Spy: records the call so we can look at the argument afterwards.
+      const create = jest.spyOn(candidateRepo, 'create');
+
+      await service.addCandidate({ ...request, policy: 'ลดค่าครองชีพ' });
+
+      expect(create).toHaveBeenCalledTimes(1);
+      expect(create.mock.calls[0][0]).toEqual({
+        candidateNumber: 1,
+        policy: 'ลดค่าครองชีพ',
+        user: { connect: { id: 42 } },
+        party: { connect: { id: 3 } },
+        constituency: { connect: { id: 5 } },
+      });
+    });
+
+    it('stores policy as null when it is not given', async () => {
+      givenEverythingIsAvailable();
+      const create = jest.spyOn(candidateRepo, 'create');
+
+      await service.addCandidate(request);
+
+      expect(create.mock.calls[0][0].policy).toBeNull();
+    });
+  });
+
+  it('2.3.6 Faker: passes any generated candidate through unchanged', async () => {
+    // Arrange — ids, number and policy come from faker (seeded in test/support/seedFaker.ts),
+    // so the test does not depend on one hand-picked example.
+    const constituency = aConstituency();
+    const party = aParty();
+    const user = aUser({ constituencyId: constituency.id });
+    const input = {
+      candidateNumber: faker.number.int({ min: 1, max: 99 }),
+      policy: fakerTH.lorem.paragraph(),
+      partyId: party.id,
+      constituencyId: constituency.id,
+      userId: user.id,
+    };
+    jest.mocked(userRepo.findById).mockResolvedValue(user);
+    jest.mocked(candidateRepo.findByUserId).mockResolvedValue(null);
+    jest.mocked(partyRepo.findById).mockResolvedValue(party);
+    jest.mocked(constituencyRepo.findById).mockResolvedValue(constituency);
+    jest.mocked(candidateRepo.isCandidateNumberUsed).mockResolvedValue(false);
+    const create = jest.spyOn(candidateRepo, 'create');
+
+    // Act
+    await service.addCandidate(input);
+
+    // Assert
+    expect(candidateRepo.isCandidateNumberUsed).toHaveBeenCalledWith(constituency.id, input.candidateNumber);
+    expect(create.mock.calls[0][0]).toEqual({
+      candidateNumber: input.candidateNumber,
+      policy: input.policy,
+      user: { connect: { id: user.id } },
+      party: { connect: { id: party.id } },
+      constituency: { connect: { id: constituency.id } },
+    });
   });
 
   describe('2.3.2 Failure + 2.3.5 Mock: rejects and never creates the candidate', () => {
